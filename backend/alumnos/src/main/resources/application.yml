@@ -24,6 +24,19 @@ spring:
     username: guest
     password: guest
 
+# Respaldo por si el Config Server no esta levantado. La fuente de verdad es
+# config-server/.../config/application.yml: el secreto y el emisor deben ser
+# identicos a los del gateway para que este servicio valide sus tokens.
+app:
+  jwt:
+    secret: clave-de-firma-access-token-colegio-microservicios-2026-seguro
+    issuer: colegio-microservicios
+  security:
+    monitoring:
+      username: monitor
+      password: "{bcrypt}$2a$10$bp3Rl8zJX0JTIDGf9qy0L.zP9Mx0HjmmXAoQUggKKjui60LLB/KzO"
+      roles: [ ADMIN ]
+
 eureka:
   client:
     service-url:
@@ -35,4 +48,4 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,env,beans,configprops,metrics

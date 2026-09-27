@@ -1,7 +1,9 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Alumno } from '../models/alumno';
 import { AlumnoService } from '../services/alumno.service';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-alumnos',
@@ -15,17 +17,35 @@ export class AlumnosComponent implements OnInit {
   editando = signal<Alumno | null>(null);
   formulario: Alumno = this.nuevoFormulario();
 
-  constructor(private alumnoService: AlumnoService) {}
+  constructor(
+    private alumnoService: AlumnoService,
+    public auth: AuthService,
+  ) {}
 
   ngOnInit(): void {
     this.cargar();
   }
 
+  /** USER solo lee; ADMIN tambien crea, edita y elimina. */
+  get esAdmin(): boolean {
+    return this.auth.esAdmin();
+  }
+
   cargar(): void {
     this.alumnoService.listar().subscribe({
       next: (data) => this.alumnos.set(data),
-      error: () => this.mensaje.set('Error al obtener los alumnos. Verifique que el gateway esté activo.'),
+      error: (error: HttpErrorResponse) => this.mensaje.set(this.explicarError(error)),
     });
+  }
+
+  private explicarError(error: HttpErrorResponse): string {
+    if (error.status === 401) {
+      return 'Sesión vencida o token inválido. Vuelva a iniciar sesión.';
+    }
+    if (error.status === 403) {
+      return 'Su rol no tiene permisos para esta operación (se requiere ADMIN).';
+    }
+    return 'Error al obtener los alumnos. Verifique que el gateway esté activo.';
   }
 
   nuevoFormulario(): Alumno {

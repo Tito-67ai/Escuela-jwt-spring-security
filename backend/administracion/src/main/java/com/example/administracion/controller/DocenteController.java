@@ -6,6 +6,7 @@ import com.example.administracion.repository.DocenteRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * CRUD de docentes. El token JWT llega validado desde el gateway y tambien se
+ * valida aqui (resource server).
+ *
+ * <p>Los @PreAuthorize son el segundo nivel de defensa: aunque las reglas de
+ * URL de SecurityConfig se relajasen por error, el metodo seguiria protegido.</p>
+ */
 @RestController
 @RequestMapping("/api/administracion")
 public class DocenteController {
@@ -44,6 +52,7 @@ public class DocenteController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
     public Docente crear(@RequestBody Docente docente) {
         Docente guardado = repository.save(docente);
         publisher.publicarDocenteCreado(guardado);
@@ -51,6 +60,7 @@ public class DocenteController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Docente> actualizar(@PathVariable Long id, @RequestBody Docente datos) {
         return repository.findById(id).map(existente -> {
             existente.setNombre(datos.getNombre());
@@ -62,6 +72,7 @@ public class DocenteController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> eliminar(@PathVariable Long id) {
         if (repository.existsById(id)) {
             repository.deleteById(id);
