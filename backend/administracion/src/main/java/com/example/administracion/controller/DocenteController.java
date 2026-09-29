@@ -7,6 +7,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -53,7 +54,15 @@ public class DocenteController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
     public Docente crear(@RequestBody Docente docente) {
+        // El alta y la publicacion del evento van en la MISMA transaccion, a
+        // proposito. Sin esto, repository.save() confirmaria por su cuenta y,
+        // si despues el broker no estuviera disponible, el cliente recibiria un
+        // 500 con el docente ya guardado en la base de datos: al reintentar se
+        // quedaria duplicado. Aqui, si la publicacion falla, la transaccion se
+        // deshace y no se guarda nada, asi que el 500 es honesto y el reintento
+        // es seguro.
         Docente guardado = repository.save(docente);
         publisher.publicarDocenteCreado(guardado);
         return guardado;

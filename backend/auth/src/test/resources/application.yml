@@ -1,0 +1,57 @@
+# Configuracion minima para los tests: el Config Server no arranca en la suite,
+# asi que aqui se fijan directamente los valores que el servicio leeria de el.
+# Las contrasenas son los mismos hashes BCrypt que estan en config/auth.yml, de
+# modo que los tests tambien los dan por buenos.
+server:
+  port: 0
+
+spring:
+  application:
+    name: auth
+  main:
+    banner-mode: off
+  cloud:
+    config:
+      enabled: false
+
+app:
+  jwt:
+    secret: clave-de-pruebas-access-token-colegio-microservicios-larga
+    refresh-secret: clave-de-pruebas-refresh-token-colegio-microservicios-larga
+    issuer: colegio-microservicios
+    expiration: 900000
+    refresh-expiration: 28800000
+    cookie-name: access_token
+  auth:
+    users:
+      admin:
+        password: "{bcrypt}$2a$10$gZparbUDffZ1pKvmIM9gleYKE829oQYSoVK4kv75DS5BjfGcF.axu"
+        roles: [ ADMIN ]
+      user:
+        password: "{bcrypt}$2a$10$IOP08FQtJZ/8SFAgL0sSeeKQSdwOSFEJL8tqy46aotbNCgU0y1832"
+        roles: [ USER ]
+  security:
+    monitoring:
+      username: monitor
+      password: "{bcrypt}$2a$10$bp3Rl8zJX0JTIDGf9qy0L.zP9Mx0HjmmXAoQUggKKjui60LLB/KzO"
+      roles: [ ADMIN ]
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+# La documentacion se sirve bajo el prefijo publico del gateway, igual que en
+# produccion: el HTML, el tema CSS y el JSON de la API cuelgan de /auth/**.
+springdoc:
+  api-docs:
+    path: /auth/v3/api-docs
+  swagger-ui:
+    path: /auth/swagger-ui.html
+  swagger-css-url: /auth/docs/swagger-custom.css

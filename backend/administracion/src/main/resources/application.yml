@@ -1,11 +1,16 @@
+# Microservicio de administracion
+#
+# Guarda lo que es propio del servicio: puerto, base de datos y cola de
+# mensajes. El secreto JWT y la cuenta de monitoreo NO estan aqui: los lee del
+# Config Server, que es la unica fuente de verdad.
 server:
   port: 8102
 
 spring:
   application:
     name: administracion
-  config:
-    import: optional:configserver:http://localhost:8888
+  profiles:
+    default: dev
   datasource:
     url: jdbc:h2:file:./data/administracion
     driver-class-name: org.h2.Driver
@@ -24,28 +29,38 @@ spring:
     username: guest
     password: guest
 
-# Respaldo por si el Config Server no esta levantado. La fuente de verdad es
-# config-server/.../config/application.yml: el secreto y el emisor deben ser
-# identicos a los del gateway para que este servicio valide sus tokens.
-app:
-  jwt:
-    secret: clave-de-firma-access-token-colegio-microservicios-2026-seguro
-    issuer: colegio-microservicios
-  security:
-    monitoring:
-      username: monitor
-      password: "{bcrypt}$2a$10$bp3Rl8zJX0JTIDGf9qy0L.zP9Mx0HjmmXAoQUggKKjui60LLB/KzO"
-      roles: [ ADMIN ]
+springdoc:
+  api-docs:
+    path: /api/administracion/v3/api-docs
+  swagger-ui:
+    # Solo se cambia la raiz: el HTML, los assets y el JSON quedan colgando de
+    # /api/administracion/**, la unica ruta que el gateway tiene mapeada, y asi el navegador
+    # puede seguir redirecciones y pedir ficheros hermanos.
+    path: /api/administracion/swagger-ui.html
+    doc-expansion: none
+    display-request-duration: true
+    try-it-out-enabled: true
+  # No se fija swagger-css-url porque springdoc 3.x elimino esa propiedad: el
+  # tema del proyecto no se puede inyectar en el HTML que genera springdoc. Por
+  # eso la entrada a la documentacion es una pagina propia, que reutiliza los
+  # assets de aqui y carga el CSS. Ojo: el fichero se llama index.html pero hay
+  # que abrirlo con su nombre, porque /api/administracion/docs/ daria 404 (Spring
+  # Boot solo resuelve index.html en la raiz) y /api/administracion/docs lo
+  # absorbe el @GetMapping("/{id}") del controller.
+  #   http://localhost:8080/api/administracion/docs/index.html
 
-eureka:
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-    register-with-eureka: true
-    fetch-registry: true
+---
+# Arranque local: el Config Server corre en la maquina.
+spring:
+  config:
+    activate:
+      on-profile: dev
+    import: "optional:configserver:http://localhost:8888"
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,env,beans,configprops,metrics
+---
+# Arranque con Docker Compose: los servicios se llaman por su nombre de servicio.
+spring:
+  config:
+    activate:
+      on-profile: docker
+    import: "optional:configserver:http://configserver:8888"

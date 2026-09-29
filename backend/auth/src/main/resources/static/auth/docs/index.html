@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Autenticacion - Documentacion</title>
+
+    <!--
+      Esta pagina es la entrada a la documentacion de este servicio. Sustituye a
+      la que genera springdoc porque en springdoc 3.x ya no existe la propiedad
+      swagger-css-url, de modo que el tema del proyecto no se puede inyectar en
+      su HTML: sin este fichero, Swagger se abriria con el estilo de fabrica.
+
+      Solo se reaprovecha el paquete de assets de swagger-ui, que el servicio
+      sigue sirviendo en /auth/swagger-ui/**; el JS de abajo es una copia del
+      inicializador de springdoc con dos cambios: apunta al JSON publico de esta
+      API y carga el tema.
+    -->
+    <link rel="stylesheet" type="text/css" href="/auth/swagger-ui/swagger-ui.css" />
+    <link rel="stylesheet" type="text/css" href="/auth/swagger-ui/index.css" />
+    <link rel="stylesheet" type="text/css" href="/auth/docs/swagger-custom.css" />
+    <link rel="icon" type="image/png" href="/auth/swagger-ui/favicon-32x32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="/auth/swagger-ui/favicon-16x16.png" sizes="16x16" />
+  </head>
+
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="/auth/swagger-ui/swagger-ui-bundle.js" charset="UTF-8"></script>
+    <script src="/auth/swagger-ui/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: "/auth/v3/api-docs",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+        layout: "StandaloneLayout",
+        tryItOutEnabled: true,
+        displayRequestDuration: true,
+        docExpansion: "none",
+        validatorUrl: ""
+      });
+    </script>
+  </body>
+</html>

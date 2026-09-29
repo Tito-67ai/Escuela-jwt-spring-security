@@ -1,4 +1,4 @@
-package com.example.administracion.security;
+package com.example.gateway.security;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -6,11 +6,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Cuenta de monitoreo usada por Spring Boot Admin para leer /actuator/**
- * por HTTP Basic. La contrasena llega hasheada con BCrypt desde el Config Server.
+ * Cuenta de servicio para /actuator/** (app.security.monitoring).
+ *
+ * <p>La comparten todos los microservicios porque Spring Boot Admin necesita leer
+ * los endpoints de actuator de cada uno con las mismas credenciales. Al vivir en
+ * su propia cadena de seguridad, esta cuenta no puede usarse para iniciar sesion
+ * en el servicio auth: obtenerla no da acceso a ningun token de usuario.</p>
  */
 @ConfigurationProperties(prefix = "app.security")
-public class SecurityProperties {
+public class MonitoringProperties {
 
     private MonitoringInfo monitoring = new MonitoringInfo();
 

@@ -1,0 +1,37 @@
+# Configuracion del servicio de autenticacion
+#
+# Solo el servicio auth tiene usuarios, porque es el unico que comprueba
+# credenciales. El gateway se limita a pasarle las peticiones.
+app:
+  auth:
+    # Usuarios que pueden iniciar sesion. Las contrasenas estan hasheadas con
+    # BCrypt ({bcrypt}...) y las decodifica PasswordEncoderFactories, asi que
+    # nunca se comparan ni se guardan en texto plano.
+    # USER  -> solo lectura (GET)
+    # ADMIN -> lectura y escritura (POST, PUT, DELETE) + endpoints actuator
+    users:
+      admin:
+        # admin123
+        password: "{bcrypt}$2a$10$gZparbUDffZ1pKvmIM9gleYKE829oQYSoVK4kv75DS5BjfGcF.axu"
+        roles: [ ADMIN ]
+      user:
+        # user123
+        password: "{bcrypt}$2a$10$IOP08FQtJZ/8SFAgL0sSeeKQSdwOSFEJL8tqy46aotbNCgU0y1832"
+        roles: [ USER ]
+    # Como se entregan los tokens al navegador. Viajan en cookies HttpOnly, no en
+    # el cuerpo de la respuesta: asi ningun script de la pagina puede leerlos.
+    cookie:
+      # El access token lo necesita cualquier ruta (/api/...), de ahi Path=/.
+      access-name: access_token
+      access-path: /
+      # El refresh token solo se usa contra /auth/refresh. Restringir su ruta
+      # significa que el navegador no lo adjunta a las peticiones de /api/...,
+      # con lo que queda fuera del alcance del resto de la aplicacion.
+      refresh-name: refresh_token
+      refresh-path: /auth
+      # SameSite=Lax mantiene la proteccion contra CSRF: la cookie viaja en
+      # peticiones del propio sitio, pero no en las que llegan desde otro.
+      same-site: Lax
+      # En local no hay HTTPS, asi que se marca secure=false. Con el despliegue
+      # real detras de un proxy con TLS hay que ponerlo en true.
+      secure: false

@@ -1,0 +1,47 @@
+# Servicio de autenticacion
+#
+# Solo guarda lo que es propio de ESTE servicio: puerto y nombre con el que se
+# registra en Eureka. Todo lo demas (secreto JWT, emisor, cuenta de monitoreo,
+# usuarios) vive en el Config Server, que es la unica fuente de verdad. Asi el
+# secreto no esta replicado por el codigo de cada microservicio.
+server:
+  port: 8100
+
+spring:
+  application:
+    name: auth
+  profiles:
+    default: dev
+
+springdoc:
+  api-docs:
+    path: /auth/v3/api-docs
+  swagger-ui:
+    # Solo se cambia la raiz: el HTML, los assets y el JSON quedan colgando de
+    # /auth/**, la unica ruta que el gateway tiene mapeada, y asi el navegador
+    # puede seguir redirecciones y pedir ficheros hermanos.
+    path: /auth/swagger-ui.html
+    doc-expansion: none
+    display-request-duration: true
+    try-it-out-enabled: true
+  # No se fija swagger-css-url porque springdoc 3.x elimino esa propiedad: el
+  # tema del proyecto no se puede inyectar en el HTML que genera springdoc. Por
+  # eso la entrada a la documentacion es una pagina propia, que reutiliza los
+  # assets de aqui y carga el CSS:
+  #   http://localhost:8080/auth/docs/index.html
+
+---
+# Arranque local: el Config Server corre en la maquina.
+spring:
+  config:
+    activate:
+      on-profile: dev
+    import: "optional:configserver:http://localhost:8888"
+
+---
+# Arranque con Docker Compose: los servicios se llaman por su nombre de servicio.
+spring:
+  config:
+    activate:
+      on-profile: docker
+    import: "optional:configserver:http://configserver:8888"

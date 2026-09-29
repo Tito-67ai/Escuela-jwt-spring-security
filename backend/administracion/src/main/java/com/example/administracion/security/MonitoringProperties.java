@@ -1,4 +1,4 @@
-package com.example.alumnos.security;
+package com.example.administracion.security;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -10,7 +10,7 @@ import java.util.List;
  * por HTTP Basic. La contrasena llega hasheada con BCrypt desde el Config Server.
  */
 @ConfigurationProperties(prefix = "app.security")
-public class SecurityProperties {
+public class MonitoringProperties {
 
     private MonitoringInfo monitoring = new MonitoringInfo();
 

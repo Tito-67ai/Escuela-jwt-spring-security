@@ -1,0 +1,13 @@
+# El contexto de Docker solo necesita pom.xml y src/. Excluir todo lo demas
+# hace que la construccion sea mucho mas rapida.
+target/
+data/
+logs/
+.git/
+.idea/
+*.iml
+.mvn/
+mvnw
+mvnw.cmd
+Dockerfile
+.dockerignore

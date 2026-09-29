@@ -1,13 +1,15 @@
-# Configuracion compartida (aplicada a todos los microservicios)
+# Configuracion compartida por TODOS los microservicios
 #
-# Spring Security + JWT:
-#   - El gateway es el AUTORIZADOR: valida el token, emite el access token y el
-#     refresh token.
-#   - Los microservicios son RESOURCE SERVERS: validan el mismo token con el
-#     mismo secreto, para que ningun servicio pueda esquivar al gateway
-#     entrando directamente por su puerto.
-#   - Por eso el secreto y el emisor (issuer) viven aqui, en el Config Server:
-#     todos los servicios leen exactamente los mismos valores.
+# Este archivo es la unica fuente de verdad para el secreto JWT y la cuenta de
+# monitoreo. Ningun servicio los declara en su propio application.yml: si lo
+# hicieran, su copia local tendria precedencia sobre estos valores y dos
+# servicios podrian acabar validando tokens con secretos distintos.
+#
+# Reparto de responsabilidades:
+#   - Aqui (Config Server): secretos, emisor, duraciones, cuenta de monitoreo,
+#     rutas del gateway y usuarios que pueden iniciar sesion.
+#   - En el application.yml de cada servicio: su puerto, su nombre, su base de
+#     datos y su cola, que son valores propios y no deben compartirse.
 app:
   jwt:
     # Secreto de firma de los ACCESS tokens (HS256). Minimo 32 caracteres.
@@ -22,22 +24,25 @@ app:
     expiration: 900000
     # Duracion del refresh token: 8 horas (28800000 ms).
     refresh-expiration: 28800000
+    # Nombre de la cookie que lleva el access token. El servicio auth la escribe
+    # y todos los servicios la leen, asi que el nombre vive aqui.
+    cookie-name: access_token
   security:
     # Cuenta de solo monitoreo (Spring Boot Admin). Permite leer los endpoints
     # /actuator/** de cualquier servicio por HTTP Basic. La contrasena esta en
     # BCrypt, nunca en texto plano.
+    #
+    # Cada servicio la monta en su propio authenticationManager, de forma que
+    # esta cuenta de servicio no puede autenticarse en /auth/login ni obtener
+    # nunca un token de usuario.
     monitoring:
       username: monitor
       password: "{bcrypt}$2a$10$bp3Rl8zJX0JTIDGf9qy0L.zP9Mx0HjmmXAoQUggKKjui60LLB/KzO"
       roles: [ ADMIN ]
 
-spring:
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
-
+# Registro de Eureka. Estos valores son los de arranque local; cuando el servicio
+# corre en Docker Compose los sobrescribe su application-docker.yml, que tiene
+# precedencia sobre lo importado del Config Server.
 eureka:
   client:
     service-url:
@@ -54,7 +59,7 @@ management:
       # y logs. No son publicos: exigen ROLE_ADMIN (ver SecurityConfig de cada
       # servicio), salvo /actuator/health e /actuator/info.
       exposure:
-        include: health,info,env,beans,configprops,loggers,httptrace,threaddump,metrics,sessions
+        include: health,info,env,beans,configprops,loggers,threaddump,metrics
   endpoint:
     health:
       show-details: always

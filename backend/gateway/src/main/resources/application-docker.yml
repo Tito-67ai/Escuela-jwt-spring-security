@@ -1,0 +1,5 @@
+# Ajustes que solo aplican cuando el servicio corre dentro de Docker Compose.
+eureka:
+  client:
+    service-url:
+      defaultZone: http://registry:8761/eureka/

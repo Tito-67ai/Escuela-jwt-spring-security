@@ -1,35 +1,23 @@
-# Configuracion del API Gateway
+# Rutas del API Gateway
 #
-# El gateway es el unico punto de entrada publico: autentica (POST /auth/login),
-# emite los tokens y aplica las reglas de autorizacion por rol.
-server:
-  port: 8080
-
-app:
-  security:
-    # Usuarios que pueden iniciar sesion. Las contrasenas estan hasheadas con
-    # BCrypt ({bcrypt}...) y las decodifica PasswordEncoderFactories, asi que
-    # nunca se comparan ni se guardan en texto plano.
-    # USER  -> solo lectura (GET)
-    # ADMIN -> lectura y escritura (POST, PUT, DELETE) + endpoints actuator
-    users:
-      admin:
-        # admin123
-        password: "{bcrypt}$2a$10$gZparbUDffZ1pKvmIM9gleYKE829oQYSoVK4kv75DS5BjfGcF.axu"
-        roles: [ ADMIN ]
-      user:
-        # user123
-        password: "{bcrypt}$2a$10$IOP08FQtJZ/8SFAgL0sSeeKQSdwOSFEJL8tqy46aotbNCgU0y1832"
-        roles: [ USER ]
-
+# El gateway es la unica puerta de entrada publica. Solo enruta y autoriza:
+# NO tiene usuarios ni emite tokens, eso es trabajo del servicio auth.
+#
+# Las rutas viven aqui y no en el codigo para poder anadir un microservicio
+# (por ejemplo pagos) sin recompilar el gateway. Por eso se usa lb://, que
+# resuelve el destino con el registro de Eureka.
 spring:
-  application:
-    name: gateway
   cloud:
     gateway:
       server:
         webflux:
           routes:
+            # El servicio auth va el primero: el login tiene que funcionar
+            # antes de que exista ninguna cookie.
+            - id: auth
+              uri: lb://auth
+              predicates:
+                - Path=/auth/**
             - id: alumnos
               uri: lb://alumnos
               predicates:
@@ -38,9 +26,3 @@ spring:
               uri: lb://administracion
               predicates:
                 - Path=/api/administracion/**
-          globalcors:
-            cors-configurations:
-              '[/**]':
-                allowed-origins: "*"
-                allowed-methods: "*"
-                allowed-headers: "*"

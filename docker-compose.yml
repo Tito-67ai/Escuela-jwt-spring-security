@@ -1,3 +1,18 @@
+# Colegio de microservicios - arranque completo con un solo comando
+#
+#   docker compose up --build
+#
+# Orden de arranque: RabbitMQ y el registro de Eureka son la base; despues el
+# Config Server, que los demas consultan al iniciar; luego los servicios de
+# negocio; y por ultimo el gateway, que es la unica puerta de entrada.
+#
+# Las dependencias se expresan con depends_on + condition: service_healthy para
+# que un servicio no falle por arrancar antes de tiempo su dependencia.
+
+name: colegio-microservicios
+
+# ---------------------------------------------------------------- infraestructura
+
 services:
   rabbitmq:
     image: rabbitmq:3-management
@@ -10,11 +25,145 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - microservices
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  registry:
+    build: ./backend/registry
+    container_name: eureka-microservicios
+    ports:
+      - "8761:8761"
+    networks:
+      - microservices
+    healthcheck:
+      # /actuator/health del registro pasa a UP cuando el servicio web arranca.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+    restart: unless-stopped
+
+  configserver:
+    build: ./backend/config-server
+    container_name: config-server-microservicios
+    ports:
+      - "8888:8888"
+    networks:
+      - microservices
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------- servicios
+
+  auth:
+    build: ./backend/auth
+    container_name: auth-microservicios
+    ports:
+      - "8100:8100"
+    depends_on:
+      configserver:
+        condition: service_healthy
+      registry:
+        condition: service_healthy
+    networks:
+      - microservices
+    restart: unless-stopped
+
+  alumnos:
+    build: ./backend/alumnos
+    container_name: alumnos-microservicios
+    ports:
+      - "8101:8101"
+    depends_on:
+      configserver:
+        condition: service_healthy
+      registry:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - alumnos-data:/app/data
+    networks:
+      - microservices
+    restart: unless-stopped
+
+  administracion:
+    build: ./backend/administracion
+    container_name: administracion-microservicios
+    ports:
+      - "8102:8102"
+    depends_on:
+      configserver:
+        condition: service_healthy
+      registry:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - administracion-data:/app/data
+    networks:
+      - microservices
+    restart: unless-stopped
+
+  gateway:
+    build: ./backend/gateway
+    container_name: gateway-microservicios
+    ports:
+      - "8080:8080"
+    depends_on:
+      # El gateway espera a que esten de pie los tres servicios a los que enruta:
+      # si no, LB://auth no tendria destino y la primera peticion fallaria.
+      auth:
+        condition: service_healthy
+      alumnos:
+        condition: service_healthy
+      administracion:
+        condition: service_healthy
+      registry:
+        condition: service_healthy
+      configserver:
+        condition: service_healthy
+    networks:
+      - microservices
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------- monitorizacion
+
+  admin-server:
+    build: ./backend/admin-server
+    container_name: admin-server-microservicios
+    ports:
+      - "9090:9090"
+    depends_on:
+      registry:
+        condition: service_healthy
+    networks:
+      - microservices
+    restart: unless-stopped
+
+# --------------------------------------------------------------------- persistencia
+#
+# Solo se guardan en disco los datos que hacen falta entre reinicios: las bases
+# de datos H2 y la cola de RabbitMQ. El resto de servicios son sin estado.
 
 volumes:
   rabbitmq-data:
+  alumnos-data:
+  administracion-data:
+
+networks:
+  microservices:
+    driver: bridge

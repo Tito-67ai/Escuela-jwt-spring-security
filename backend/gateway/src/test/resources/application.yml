@@ -1,0 +1,48 @@
+# El gateway en los tests arranca sin Config Server ni Eureka: se le dan
+# directamente los valores que leeria de ellos.
+server:
+  port: 0
+
+spring:
+  application:
+    name: gateway
+  main:
+    banner-mode: off
+  cloud:
+    config:
+      enabled: false
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth
+              uri: lb://auth
+              predicates:
+                - Path=/auth/**
+            - id: alumnos
+              uri: lb://alumnos
+              predicates:
+                - Path=/api/alumnos/**
+
+app:
+  jwt:
+    secret: clave-de-pruebas-access-token-colegio-microservicios-larga
+    issuer: colegio-microservicios
+    cookie-name: access_token
+  security:
+    monitoring:
+      username: monitor
+      password: "{bcrypt}$2a$10$bp3Rl8zJX0JTIDGf9qy0L.zP9Mx0HjmmXAoQUggKKjui60LLB/KzO"
+      roles: [ ADMIN ]
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

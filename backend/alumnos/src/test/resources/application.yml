@@ -1,0 +1,58 @@
+# Configuracion de los tests del microservicio de alumnos: sin Config Server, sin
+# Eureka, sin RabbitMQ y con la base de datos en memoria. Los valores de app.jwt
+# son los mismos que usaria el Config Server.
+server:
+  port: 0
+
+spring:
+  application:
+    name: alumnos
+  main:
+    banner-mode: off
+  cloud:
+    config:
+      enabled: false
+  datasource:
+    url: jdbc:h2:mem:alumnos-test
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  rabbitmq:
+    listener:
+      simple:
+        auto-startup: false
+
+app:
+  jwt:
+    secret: clave-de-pruebas-access-token-colegio-microservicios-larga
+    issuer: colegio-microservicios
+    cookie-name: access_token
+  security:
+    monitoring:
+      username: monitor
+      password: "{bcrypt}$2a$10$bp3Rl8zJX0JTIDGf9qy0L.zP9Mx0HjmmXAoQUggKKjui60LLB/KzO"
+      roles: [ ADMIN ]
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+# La documentacion se sirve bajo el prefijo publico del gateway, igual que en
+# produccion: el HTML, el tema CSS y el JSON de la API cuelgan de
+# /api/alumnos/**.
+springdoc:
+  api-docs:
+    path: /api/alumnos/v3/api-docs
+  swagger-ui:
+    path: /api/alumnos/swagger-ui.html
+  swagger-css-url: /api/alumnos/docs/swagger-custom.css

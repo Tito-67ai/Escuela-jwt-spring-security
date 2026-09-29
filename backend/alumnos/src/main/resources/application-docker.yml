@@ -1,0 +1,10 @@
+# Ajustes que solo aplican cuando el servicio corre dentro de Docker Compose.
+# Dentro de la red de Compose, el registro es "registry" y la cola es "rabbitmq".
+eureka:
+  client:
+    service-url:
+      defaultZone: http://registry:8761/eureka/
+
+spring:
+  rabbitmq:
+    host: rabbitmq

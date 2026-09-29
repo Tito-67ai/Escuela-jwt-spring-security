@@ -1,35 +1,40 @@
-package com.example.gateway.security;
+package com.example.auth.service;
 
+import com.example.auth.config.JwtProperties;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
 /**
- * Emite y valida los tokens JWT del gateway.
+ * Emite y valida los tokens JWT. Este es el unico servicio del sistema con
+ * capacidad de crearlos.
  *
- * <p>Se manejan dos tipos de token, firmados con secretos distintos:</br>
+ * <p>Se manejan dos tipos de token, firmados con secretos distintos:</p>
  * <ul>
- *   <li><b>access</b>: viaja en cada llamada (Authorization: Bearer). Corto,
- *       15 min, y es el que validan el gateway y los microservicios.</li>
- *   <li><b>refresh</b>: sirve solo para renovar el access token en
- *       /auth/refresh. Largo, 8 h, y nunca se acepta como acceso a la API.</li>
+ *   <li><b>access</b>: el que autorizan el gateway y los microservicios. Corto
+ *       (15 min) y va en la cookie {@code access_token}.</li>
+ *   <li><b>refresh</b>: solo sirve para pedir un access token nuevo. Largo (8 h)
+ *       y va en la cookie {@code refresh_token}, restringida a {@code /auth}.</li>
  * </ul>
- * La separacion de secretos evita el "token confusion": aunque alguien robe un
- * refresh token, no puede usarlo como credencial para llamar a /api/**.
+ *
+ * <p>Que los secretos sean distintos evita el "token confusion": aunque alguien
+ * se robe el refresh token, no puede usarlo como credencial contra la API,
+ * porque se verifica contra otra clave y además lleva {@code typ=refresh}.</p>
  */
-@Component
+@Service
 public class JwtService {
 
-    private static final String CLAIM_ROLES = "roles";
-    private static final String CLAIM_TIPO = "typ";
+    public static final String CLAIM_ROLES = "roles";
+    public static final String CLAIM_TIPO = "typ";
+
     private static final String TIPO_ACCESS = "access";
     private static final String TIPO_REFRESH = "refresh";
 
@@ -47,7 +52,7 @@ public class JwtService {
         this.refreshExpirationMs = properties.getRefreshExpiration();
     }
 
-    // ---------------------------------------------------------------- emisión
+    // ------------------------------------------------------------------ emisión
 
     public String generarAccessToken(String username, List<String> roles) {
         Date ahora = new Date();
@@ -58,9 +63,9 @@ public class JwtService {
                 .claim(CLAIM_TIPO, TIPO_ACCESS)
                 .issuedAt(ahora)
                 .expiration(new Date(ahora.getTime() + expirationMs))
-                // El algoritmo se fija explicitamente: si se dejara que jjwt lo
-                // elija solo, firmaria con HS384 segun el largo de la clave y los
-                // validadores (HS256) rechazarian el token.
+                // El algoritmo se fija a proposito: si jjwt lo eligiera solo,
+                // firmaria con HS384 segun el largo de la clave y los validadores
+                // (HS256) rechazarian el token.
                 .signWith(claveAccess, Jwts.SIG.HS256)
                 .compact();
     }
@@ -71,62 +76,48 @@ public class JwtService {
                 .issuer(issuer)
                 .subject(username)
                 .claim(CLAIM_TIPO, TIPO_REFRESH)
+                // Identificador unico. Sin el, dos renovaciones dentro del mismo
+                // segundo producirian un token IDENTICO (mismo sub, iss, iat y exp),
+                // y la rotacion no rotaria nada: el token viejo seguiria valido.
+                .id(UUID.randomUUID().toString())
                 .issuedAt(ahora)
                 .expiration(new Date(ahora.getTime() + refreshExpirationMs))
                 .signWith(claveRefresh, Jwts.SIG.HS256)
                 .compact();
     }
 
+    /** Vida del access token en segundos (lo que se informa en la respuesta). */
     public long getExpirationSegundos() {
         return expirationMs / 1000;
     }
 
-    // -------------------------------------------------------------- validación
+    // --------------------------------------------------------------- validación
 
-    public boolean esAccessTokenValido(String token) {
-        try {
-            Claims claims = leerAccess(token);
-            return TIPO_ACCESS.equals(claims.get(CLAIM_TIPO, String.class));
-        } catch (Exception e) {
-            return false;
+    /** Devuelve el subject del refresh token si es autentico y vigente. */
+    public String subjectDelRefreshToken(String token) {
+        if (token == null || token.isBlank()) {
+            throw new RefreshTokenInvalidoException("No se ha presentado ningun refresh token");
         }
-    }
-
-    public boolean esRefreshTokenValido(String token) {
+        Claims claims;
         try {
-            Claims claims = leerRefresh(token);
-            return TIPO_REFRESH.equals(claims.get(CLAIM_TIPO, String.class));
-        } catch (Exception e) {
-            return false;
+            claims = leerRefresh(token);
+        } catch (JwtException | IllegalArgumentException e) {
+            // Firma manipulada, token caducado o corrupto: para el cliente es
+            // indistinguible de "no hay token".
+            throw new RefreshTokenInvalidoException("Refresh token invalido o expirado");
         }
+        if (!TIPO_REFRESH.equals(claims.get(CLAIM_TIPO, String.class))) {
+            throw new RefreshTokenInvalidoException("El token presentado no es un refresh token");
+        }
+        return claims.getSubject();
     }
 
-    /** El refresh token debe seguir siendo de un usuario que exista y siga vigente. */
-    public String extraerUsuarioDeRefresh(String token) {
-        return leerRefresh(token).getSubject();
-    }
-
-    public String extraerUsuario(String token) {
-        return leerAccess(token).getSubject();
-    }
-
-    @SuppressWarnings("unchecked")
-    public List<String> extraerRoles(String token) {
+    public List<String> rolesDelAccessToken(String token) {
         Object roles = leerAccess(token).get(CLAIM_ROLES);
         if (roles instanceof List<?> lista) {
             return lista.stream().map(String::valueOf).toList();
         }
         return List.of();
-    }
-
-    /**
-     * Convierte los roles del token (ADMIN, USER) en autoridades de Spring
-     * Security (ROLE_ADMIN, ROLE_USER), que es lo que espera hasRole(...).
-     */
-    public List<GrantedAuthority> extraerAutoridades(String token) {
-        return extraerRoles(token).stream()
-                .map(rol -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + rol))
-                .toList();
     }
 
     private Claims leerAccess(String token) {

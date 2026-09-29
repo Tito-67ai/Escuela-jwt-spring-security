@@ -1,0 +1,7 @@
+# Ajustes que solo aplican cuando el servicio corre dentro de Docker Compose.
+# El servicio se llama "auth" en la red de Compose; el registro de Eureka es
+# "registry".
+eureka:
+  client:
+    service-url:
+      defaultZone: http://registry:8761/eureka/

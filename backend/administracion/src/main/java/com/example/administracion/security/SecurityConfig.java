@@ -1,12 +1,10 @@
 package com.example.administracion.security;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -18,26 +16,23 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
- * El microservicio administracion como RESOURCE SERVER.
+ * El microservicio alumnos como RESOURCE SERVER.
  *
- * <p>No confÃ­a en el gateway: valida por su cuenta la firma, el emisor y la
- * caducidad del access token. Asi, aunque alguien conozca el puerto 8102 y llame
+ * <p>No confía en el gateway: valida por su cuenta la firma, el emisor y la
+ * caducidad del access token. Asi, aunque alguien conozca el puerto 8101 y llame
  * directo al servicio (saltandose el gateway), la API sigue protegida.</p>
  *
  * <p>Defensa en profundidad, en dos niveles:</p>
@@ -46,12 +41,38 @@ import java.nio.charset.StandardCharsets;
  *       autenticado, escritura solo ADMIN).</li>
  *   <li><b>Por metodo</b>: @PreAuthorize en el controlador.</li>
  * </ol>
+ *
+ * <p>El token puede llegar en la cookie HttpOnly o en la cabecera Authorization,
+ * asi que un navegador autenticado no necesita enviar nada a mano.</p>
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties({JwtProperties.class, SecurityProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, MonitoringProperties.class})
 public class SecurityConfig {
+
+    /**
+     * Rutas publicas de la documentacion.
+     *
+     * <p>La documentacion se publica bajo el prefijo publico del gateway
+     * ({@code /api/administracion/**}) y no en la raiz del servicio, porque el
+     * gateway reenvia la ruta sin recortarle el prefijo. Este servicio tambien se
+     * protege por su cuenta, asi que debe reconocer esas rutas explicitamente; si
+     * no, la documentacion pasaria el gateway pero el {@code denyAll()} de abajo la
+     * devolveria con un 401 y Swagger UI no abriria nunca.</p>
+     *
+     * <p>El CSS del tema cuelga de {@code /docs/} y no de la raiz: en la raiz, el
+     * {@code @GetMapping("/{id}")} del controller se apropiaba de la ruta e
+     * intentaba convertir "swagger-custom.css" en un id numerico.</p>
+     */
+    private static final String[] DOCUMENTACION = {
+            "/api/administracion/v3/api-docs/**", "/api/administracion/swagger-ui/**",
+            "/api/administracion/swagger-ui.html", "/api/administracion/docs/**",
+            "/api/administracion/favicon.ico",
+            // Las formas cortas, por si se llama al servicio directamente en :8102.
+            "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
+            "/swagger-custom.css", "/favicon.ico"
+    };
 
     /**
      * Cadena 1: endpoints de actuator. No forman parte de la API de negocio, asi
@@ -77,46 +98,56 @@ public class SecurityConfig {
     @Order(2)
     public SecurityFilterChain apiFilterChain(HttpSecurity http,
                                                JwtDecoder jwtDecoder,
-                                               JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
+                                               JwtAuthenticationConverter jwtAuthenticationConverter,
+                                               BearerTokenResolver bearerTokenResolver) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Documentacion interactiva de la API. Se publica sin sesion
+                        // a proposito: es la unica "interfaz" del proyecto y tiene que
+                        // poder consultarse antes de iniciar sesion. swagger-custom.css
+                        // tambien va aqui, o el tema no se aplicaria.
+                        .requestMatchers(DOCUMENTACION).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")
-                .requestMatchers("/h2-console/**").hasRole("ADMIN")
-                // Spring reenvia a /error (DispatcherType.ERROR) cuando una peticion
-                // falla por cualquier motivo (400, 404, 500...). Sin esta excepcion,
-                // un error de la app terminaria en el denyAll() de abajo y se
-                // responderia 403 "sin permisos", enmascarando el error real.
-                .requestMatchers("/error").permitAll()
-                .anyRequest().denyAll())
+                        .requestMatchers("/h2-console/**").hasRole("ADMIN")
+                        // Spring reenvia a /error (DispatcherType.ERROR) cuando una
+                        // peticion falla por cualquier motivo (400, 404, 500...). Sin
+                        // esta excepcion, un error de la app terminaria en el
+                        // denyAll() de abajo y se responderia 403 "sin permisos",
+                        // enmascarando el error real.
+                        .requestMatchers("/error").permitAll()
+                        .anyRequest().denyAll())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
                                 .decoder(jwtDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter))
-                        .authenticationEntryPoint(escribirJson(HttpStatus.UNAUTHORIZED)))
+                        .bearerTokenResolver(bearerTokenResolver)
+                        .authenticationEntryPoint(ApiErrors.noAutenticado()))
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(escribirJson(HttpStatus.UNAUTHORIZED))
-                        .accessDeniedHandler(responderJson(HttpStatus.FORBIDDEN)))
+                        .authenticationEntryPoint(ApiErrors.noAutenticado())
+                        .accessDeniedHandler(ApiErrors.sinPermisos()))
                 .build();
     }
 
+    /** El token se acepta en la cabecera Authorization o en la cookie HttpOnly. */
+    @Bean
+    public BearerTokenResolver bearerTokenResolver(JwtProperties properties) {
+        return new CookieOrHeaderBearerTokenResolver(properties.getCookieName());
+    }
+
     /**
-     * Valida el access token con el secreto compartido del Config Server
-     * (HS256) y comprueba tambien el emisor.
+     * Valida el access token con el secreto que compartio el servicio auth a
+     * traves del Config Server. Comprueba firma, emisor y que sea de tipo acceso.
      */
     @Bean
     public JwtDecoder jwtDecoder(JwtProperties properties) {
-        SecretKey key = new SecretKeySpec(
-                properties.getSecret().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key)
-                .macAlgorithm(MacAlgorithm.HS256)
-                .build();
-        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.getIssuer()));
-        return decoder;
+        return AccessTokenDecoder.create(properties.getSecret(), properties.getIssuer());
     }
 
     /** Claim "roles" (ADMIN) -> autoridad ROLE_ADMIN, que es lo que usa hasRole(...). */
@@ -137,8 +168,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public UserDetailsService userDetailsService(SecurityProperties properties) {
-        SecurityProperties.MonitoringInfo monitoring = properties.getMonitoring();
+    public UserDetailsService userDetailsService(MonitoringProperties properties) {
+        MonitoringProperties.MonitoringInfo monitoring = properties.getMonitoring();
         UserDetails usuario = User.withUsername(monitoring.getUsername())
                 .password(monitoring.getPassword())
                 .roles(monitoring.getRoles().toArray(new String[0]))
@@ -146,29 +177,17 @@ public class SecurityConfig {
         return new InMemoryUserDetailsManager(usuario);
     }
 
-    /** 401 con cuerpo JSON, para que el cliente distinga "sin token" de "sin permiso". */
-    private AuthenticationEntryPoint escribirJson(HttpStatus status) {
-        return (request, response, ex) -> {
-            response.setStatus(status.value());
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write(cuerpoJson(status));
-        };
-    }
-
-    private AccessDeniedHandler responderJson(HttpStatus status) {
-        return (request, response, ex) -> {
-            response.setStatus(status.value());
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write(cuerpoJson(status));
-        };
-    }
-
-    private String cuerpoJson(HttpStatus status) {
-        String mensaje = status == HttpStatus.UNAUTHORIZED
-                ? "Token ausente, invalido o expirado."
-                : "No tiene permisos para esta operacion.";
-        return "{\"status\":" + status.value()
-                + ",\"error\":\"" + status.getReasonPhrase()
-                + "\",\"message\":\"" + mensaje + "\"}";
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        // Necesario para que las cookies viajen en peticiones con credenciales.
+        config.setAllowCredentials(true);
+        config.setExposedHeaders(List.of("Authorization"));
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }
